@@ -1,31 +1,39 @@
 from flask import Flask, request, jsonify
 import pandas as pd
+import pickle
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import linear_kernel
+from sklearn.ensemble import RandomForestClassifier
+
+# Load the model and vectorizer
+with open('../model/job_recommendation_model.pkl', 'rb') as model_file:
+    model = pickle.load(model_file)
+
+with open('../model/vectorizer.pkl', 'rb') as vectorizer_file:
+    vectorizer = pickle.load(vectorizer_file)
 
 app = Flask(__name__)
 
-# Load the job data
-jobs_df = pd.read_csv('jobs_data.csv')
-jobs_df['combined'] = jobs_df['title'] + ' ' + jobs_df['company']
 
-# Vectorize the text data
-tfidf = TfidfVectorizer(stop_words='english')
-tfidf_matrix = tfidf.fit_transform(jobs_df['combined'])
-cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
+# Define the home route
+@app.route('/')
+def home():
+    return "Job Recommendation System API"
 
-@app.route('/recommend', methods=['POST'])
-def recommend():
-    data = request.get_json()
-    title = data['skills']
-    idx = jobs_df[jobs_df['title'].str.contains(title, case=False, na=False)].index[0]
-    sim_scores = list(enumerate(cosine_sim[idx]))
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
-    sim_scores = sim_scores[1:6]  # Get top 5 similar jobs
-    
-    job_indices = [i[0] for i in sim_scores]
-    recommendations = jobs_df.iloc[job_indices].to_dict('records')
-    return jsonify(recommendations)
+
+# Define the prediction route
+@app.route('/predict', methods=['POST'])
+def predict():
+    data = request.get_json(force=True)
+    description = data['description']
+
+    # Transform the description using the vectorizer
+    description_vector = vectorizer.transform([description])
+
+    # Predict using the loaded model
+    prediction = model.predict(description_vector)
+
+    return jsonify({'job_type': prediction[0]})
+
 
 if __name__ == '__main__':
     app.run(debug=True)
